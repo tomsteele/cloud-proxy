@@ -56,11 +56,11 @@ socksd can be helpful for programs that can accept a socks proxy, but may not wo
 ```
 $ ./cloud-proxy -token <my_token> -key <my_fingerprint>
 ==> Info: Droplets deployed. Waiting 100 seconds...
-==> Info: SSH proxy started on port 55555 on droplet name cloud-proxy-1
-==> Info: SSH proxy started on port 55556 on droplet name cloud-proxy-2
-==> Info: SSH proxy started on port 55557 on droplet name cloud-proxy-3
-==> Info: SSH proxy started on port 55558 on droplet name cloud-proxy-4
-==> Info: SSH proxy started on port 55559 on droplet name cloud-proxy-5
+==> Info: SSH proxy started on port 55555 on droplet name: cloud-proxy-1 IP: <IP>
+==> Info: SSH proxy started on port 55556 on droplet name: cloud-proxy-2 IP: <IP>
+==> Info: SSH proxy started on port 55557 on droplet name: cloud-proxy-3 IP: <IP>
+==> Info: SSH proxy started on port 55558 on droplet name: cloud-proxy-4 IP: <IP>
+==> Info: SSH proxy started on port 55559 on droplet name: cloud-proxy-5 IP: <IP>
 ==> Info: proxychains config
 socks5 127.0.0.1 55555
 socks5 127.0.0.1 55556
@@ -75,6 +75,7 @@ socks5 127.0.0.1 55559
 {"type": "socks5", "address": "127.0.0.1:55558"},
 {"type": "socks5", "address": "127.0.0.1:55559"}
 ]
+==> Info: Please CTRL-C to destroy droplets
 ^C==> Info: Deleted droplet name: cloud-proxy-1
 ==> Info: Deleted droplet name: cloud-proxy-2
 ==> Info: Deleted droplet name: cloud-proxy-3
