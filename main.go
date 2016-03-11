@@ -62,7 +62,7 @@ func main() {
 			if err := m.StartSSHProxy(strconv.Itoa(*startPort)); err != nil {
 				log.Warnf("Could not start SSH proxy on droplet name: %s\nError: %s\n", m.Name, err.Error())
 			} else {
-				log.Infof("SSH proxy started on port %d on droplet name %s\n", *startPort, m.Name)
+				log.Infof("SSH proxy started on port %d on droplet name: %s IP: %s\n", *startPort, m.Name, m.IPv4)
 				go m.PrintStdError()
 			}
 			*startPort++
