@@ -70,12 +70,13 @@ func main() {
 			log.Warnf("Droplet name: %s is not ready yet. Skipping...\n", m.Name)
 		}
 	}
-	fmt.Println(machines)
 
 	log.Infoln("proxychains config")
 	printProxyChains(machines)
 	log.Infoln("socksd config")
 	printSocksd(machines)
+
+	log.Infoln("Please CTRL-C to destroy droplets")
 
 	// Catch CTRL-C and delete droplets.
 	c := make(chan os.Signal, 1)
