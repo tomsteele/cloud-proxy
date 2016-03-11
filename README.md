@@ -2,7 +2,7 @@
 cloud-proxy creates multiple DO droplets and then starts local socks proxies using SSH. After exiting, the droplets are deleted.
 
 ### Warning
-This tool will deploy as many droplets as you desire, and will make a best effor to delete them after use. However, you are ultimately going to pay the bill for these droplets, and it is up to you and you alone to ensure they actually get deleted.
+This tool will deploy as many droplets as you desire, and will make a best effort to delete them after use. However, you are ultimately going to pay the bill for these droplets, and it is up to you, and you alone to ensure they actually get deleted.
 
 ### Install
 Download a compiled release [here](https://github.com/tomsteele/cloud-proxy/releases/latest). You can now execute without any dependencies. Currently the only supported and tested OS is Linux:
