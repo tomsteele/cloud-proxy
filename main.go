@@ -14,21 +14,22 @@ import (
 )
 
 var (
-	token     = flag.String("token", "", "DO API key")
-	keyID     = flag.String("key", "", "SSH key fingerprint")
-	count     = flag.Int("count", 5, "Amount of droplets to deploy")
-	name      = flag.String("name", "cloud-proxy", "Droplet name prefix")
-	region    = flag.String("region", "nyc3", "Region to deploy droplets to")
-	force     = flag.Bool("force", false, "Bypass built-in protections that prevent you from deploying more than 50 droplets")
-	startPort = flag.Int("start-tcp", 55555, "TCP port to start first proxy on and increment from")
-	version   = flag.Bool("v", false, "Print version and exit")
-	VERSION   = "1.0.0"
+	token       = flag.String("token", "", "DO API key")
+	sshLocation = flag.String("key-location", "~/.ssh/id_rsa", "SSH key location")
+	keyID       = flag.String("key", "", "SSH key fingerprint")
+	count       = flag.Int("count", 5, "Amount of droplets to deploy")
+	name        = flag.String("name", "cloud-proxy", "Droplet name prefix")
+	region      = flag.String("region", "nyc3", "Region to deploy droplets to")
+	force       = flag.Bool("force", false, "Bypass built-in protections that prevent you from deploying more than 50 droplets")
+	startPort   = flag.Int("start-tcp", 55555, "TCP port to start first proxy on and increment from")
+	showversion = flag.Bool("v", false, "Print version and exit")
+	version     = "1.1.0"
 )
 
 func main() {
 	flag.Parse()
-	if *version {
-		fmt.Println(VERSION)
+	if *showversion {
+		fmt.Println(version)
 		os.Exit(0)
 	}
 	log := logsip.Default()
@@ -59,7 +60,7 @@ func main() {
 			log.Warnf("There was an error getting the IPv4 address of droplet name: %s\nError: %s\n", m.Name, err.Error())
 		}
 		if m.IsReady() {
-			if err := m.StartSSHProxy(strconv.Itoa(*startPort)); err != nil {
+			if err := m.StartSSHProxy(strconv.Itoa(*startPort), *sshLocation); err != nil {
 				log.Warnf("Could not start SSH proxy on droplet name: %s\nError: %s\n", m.Name, err.Error())
 			} else {
 				log.Infof("SSH proxy started on port %d on droplet name: %s IP: %s\n", *startPort, m.Name, m.IPv4)

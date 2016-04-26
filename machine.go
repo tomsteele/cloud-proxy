@@ -38,9 +38,9 @@ func (m *Machine) GetIPs(client *godo.Client) error {
 }
 
 // StartSSHProxy starts a socks proxy on 127.0.0.1 or the desired port.
-func (m *Machine) StartSSHProxy(port string) error {
+func (m *Machine) StartSSHProxy(port, sshKeyLocation string) error {
 	m.Listener = port
-	m.CMD = exec.Command("ssh", "-N", "-D", port, "-o", "StrictHostKeyChecking=no", fmt.Sprintf("root@%s", m.GetIP()))
+	m.CMD = exec.Command("ssh", "-N", "-D", port, "-o", "StrictHostKeyChecking=no", "-i", sshKeyLocation, fmt.Sprintf("root@%s", m.GetIP()))
 	stderr, err := m.CMD.StderrPipe()
 	if err != nil {
 		return err
