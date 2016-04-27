@@ -5,12 +5,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"strconv"
 	"time"
-
-	"github.com/iamthemuffinman/logsip"
 )
 
 var (
@@ -32,11 +31,10 @@ func main() {
 		fmt.Println(version)
 		os.Exit(0)
 	}
-	log := logsip.Default()
-
 	if *token == "" {
 		log.Fatalln("-token required")
 	}
+
 	if *keyID == "" {
 		log.Fatalln("-key required")
 	}
@@ -49,7 +47,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("There was an error creating the droplets:\nError: %s\n", err.Error())
 	}
-	log.Infoln("Droplets deployed. Waiting 100 seconds...")
+	log.Println("Droplets deployed. Waiting 100 seconds...")
 	time.Sleep(100 * time.Second)
 
 	// For each droplet, poll it once, start SSH proxy, and then track it.
@@ -57,27 +55,27 @@ func main() {
 	for i := range machines {
 		m := &machines[i]
 		if err := m.GetIPs(client); err != nil {
-			log.Warnf("There was an error getting the IPv4 address of droplet name: %s\nError: %s\n", m.Name, err.Error())
+			log.Println("There was an error getting the IPv4 address of droplet name: %s\nError: %s\n", m.Name, err.Error())
 		}
 		if m.IsReady() {
 			if err := m.StartSSHProxy(strconv.Itoa(*startPort), *sshLocation); err != nil {
-				log.Warnf("Could not start SSH proxy on droplet name: %s\nError: %s\n", m.Name, err.Error())
+				log.Println("Could not start SSH proxy on droplet name: %s\nError: %s\n", m.Name, err.Error())
 			} else {
-				log.Infof("SSH proxy started on port %d on droplet name: %s IP: %s\n", *startPort, m.Name, m.IPv4)
+				log.Println("SSH proxy started on port %d on droplet name: %s IP: %s\n", *startPort, m.Name, m.IPv4)
 				go m.PrintStdError()
 			}
 			*startPort++
 		} else {
-			log.Warnf("Droplet name: %s is not ready yet. Skipping...\n", m.Name)
+			log.Println("Droplet name: %s is not ready yet. Skipping...\n", m.Name)
 		}
 	}
 
-	log.Infoln("proxychains config")
+	log.Println("proxychains config")
 	printProxyChains(machines)
-	log.Infoln("socksd config")
+	log.Println("socksd config")
 	printSocksd(machines)
 
-	log.Infoln("Please CTRL-C to destroy droplets")
+	log.Println("Please CTRL-C to destroy droplets")
 
 	// Catch CTRL-C and delete droplets.
 	c := make(chan os.Signal, 1)
@@ -85,9 +83,9 @@ func main() {
 	<-c
 	for _, m := range machines {
 		if err := m.Destroy(client); err != nil {
-			log.Warnf("Could not delete droplet name: %s\n", m.Name)
+			log.Println("Could not delete droplet name: %s\n", m.Name)
 		} else {
-			log.Infof("Deleted droplet name: %s", m.Name)
+			log.Println("Deleted droplet name: %s", m.Name)
 		}
 	}
 }
