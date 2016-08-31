@@ -7,7 +7,19 @@ import (
 	"github.com/digitalocean/godo"
 )
 
-func newDropLetMultiCreateReqeust(prefix, region, keyID string, count int) *godo.DropletMultiCreateRequest {
+func doRegions(client *godo.Client) ([]string, error) {
+	slugs := []string{}
+	regions, _, err := client.Regions.List(&godo.ListOptions{})
+	if err != nil {
+		return slugs, err
+	}
+	for _, r := range regions {
+		slugs = append(slugs, r.Slug)
+	}
+	return slugs, nil
+}
+
+func newDropLetMultiCreateRequest(prefix, region, keyID string, count int) *godo.DropletMultiCreateRequest {
 
 	names := []string{}
 	// Start index at 1 so we can use it in the hostname.

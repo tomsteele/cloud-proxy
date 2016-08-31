@@ -3,13 +3,17 @@ and starting socks proxies via SSH after creation.*/
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/digitalocean/godo"
 )
 
 var (
@@ -18,7 +22,7 @@ var (
 	keyID       = flag.String("key", "", "SSH key fingerprint")
 	count       = flag.Int("count", 5, "Amount of droplets to deploy")
 	name        = flag.String("name", "cloud-proxy", "Droplet name prefix")
-	region      = flag.String("region", "nyc3", "Region to deploy droplets to")
+	regions     = flag.String("regions", "*", "Comma separated list of regions to deploy droplets to, defaults to all.")
 	force       = flag.Bool("force", false, "Bypass built-in protections that prevent you from deploying more than 50 droplets")
 	startPort   = flag.Int("start-tcp", 55555, "TCP port to start first proxy on and increment from")
 	showversion = flag.Bool("v", false, "Print version and exit")
@@ -43,10 +47,27 @@ func main() {
 	}
 
 	client := newDOClient(*token)
-	droplets, _, err := client.Droplets.CreateMultiple(newDropLetMultiCreateReqeust(*name, *region, *keyID, *count))
+
+	availableRegions, err := doRegions(client)
 	if err != nil {
-		log.Fatalf("There was an error creating the droplets:\nError: %s\n", err.Error())
+		log.Fatalf("There was an error getting a list of regions:\nError: %s\n", err.Error())
 	}
+
+	regionCountMap, err := regionMap(availableRegions, *regions, *count)
+	if err != nil {
+		log.Fatalf("%s\n", err.Error())
+	}
+	droplets := []godo.Droplet{}
+
+	for region, c := range regionCountMap {
+		drops, _, err := client.Droplets.CreateMultiple(newDropLetMultiCreateRequest(*name, region, *keyID, c))
+		if err != nil {
+			log.Printf("There was an error creating the droplets:\nError: %s\n", err.Error())
+			log.Fatalln("You may need to do some manual clean up!")
+		}
+		droplets = append(droplets, drops...)
+	}
+
 	log.Println("Droplets deployed. Waiting 100 seconds...")
 	time.Sleep(100 * time.Second)
 
@@ -88,4 +109,52 @@ func main() {
 			log.Println("Deleted droplet name: %s", m.Name)
 		}
 	}
+}
+
+func regionMap(slugs []string, regions string, count int) (map[string]int, error) {
+	allowedSlugs := strings.Split(regions, ",")
+	regionCountMap := make(map[string]int)
+
+	if regions != "*" {
+		for _, s := range slugs {
+			for _, a := range allowedSlugs {
+				if s == a {
+					if len(regionCountMap) == count {
+						break
+					}
+					regionCountMap[s] = 0
+				}
+			}
+		}
+	} else {
+		for _, s := range slugs {
+			if len(regionCountMap) == count {
+				break
+			}
+			regionCountMap[s] = 0
+		}
+	}
+
+	if len(regionCountMap) == 0 {
+		return regionCountMap, errors.New("There are no regions to use")
+	}
+
+	perRegionCount := count / len(regionCountMap)
+	perRegionCountRemainder := count % len(regionCountMap)
+
+	for k := range regionCountMap {
+		regionCountMap[k] = perRegionCount
+	}
+
+	if perRegionCountRemainder != 0 {
+		c := 0
+		for k, v := range regionCountMap {
+			if c >= perRegionCountRemainder {
+				break
+			}
+			regionCountMap[k] = v + 1
+			c++
+		}
+	}
+	return regionCountMap, nil
 }
