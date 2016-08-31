@@ -60,6 +60,7 @@ func main() {
 	droplets := []godo.Droplet{}
 
 	for region, c := range regionCountMap {
+		log.Printf("Creating %d droplets to region %s", c, region)
 		drops, _, err := client.Droplets.CreateMultiple(newDropLetMultiCreateRequest(*name, region, *keyID, c))
 		if err != nil {
 			log.Printf("There was an error creating the droplets:\nError: %s\n", err.Error())
