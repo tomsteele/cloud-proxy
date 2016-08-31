@@ -11,22 +11,24 @@ $ ./cloud-proxy
 ```
 ### Usage
 ```
-Usage of cloud-proxy:
+Usage of ./cloud-proxy:
   -count int
-    	Amount of droplets to deploy (default 5)
+        Amount of droplets to deploy (default 5)
   -force
-    	Bypass built-in protections that prevent you from deploying more than 50 droplets
+        Bypass built-in protections that prevent you from deploying more than 50 droplets
   -key string
-    	SSH key fingerprint
+        SSH key fingerprint
+  -key-location string
+        SSH key location (default "~/.ssh/id_rsa")
   -name string
-    	Droplet name prefix (default "cloud-proxy")
-  -region string
-    	Region to deploy droplets to (default "nyc3")
+        Droplet name prefix (default "cloud-proxy")
+  -regions string
+        Comma separated list of regions to deploy droplets to, defaults to all. (default "*")
   -start-tcp int
-    	TCP port to start first proxy on and increment from (default 55555)
+        TCP port to start first proxy on and increment from (default 55555)
   -token string
-    	DO API key
-  -v	Print version and exit
+        DO API key
+  -v    Print version and exit
 ```
 
 ### Getting Started
