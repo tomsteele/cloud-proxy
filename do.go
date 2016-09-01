@@ -1,11 +1,10 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 
 	"github.com/digitalocean/godo"
+	"github.com/jmcvetta/randutil"
 )
 
 func doRegions(client *godo.Client) ([]string, error) {
@@ -24,9 +23,8 @@ func newDropLetMultiCreateRequest(prefix, region, keyID string, count int) *godo
 
 	names := []string{}
 	for i := 0; i < count; i++ {
-		b := make([]byte, 6)
-		rand.Read(b)
-		names = append(names, fmt.Sprintf("%s-%s", prefix, base64.StdEncoding.EncodeToString(b)))
+		name, _ := randutil.AlphaString(8)
+		names = append(names, fmt.Sprintf("%s-%s", prefix, name))
 	}
 
 	return &godo.DropletMultiCreateRequest{
