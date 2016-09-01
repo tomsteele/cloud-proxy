@@ -1,8 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
-	"strconv"
 
 	"github.com/digitalocean/godo"
 )
@@ -22,9 +23,10 @@ func doRegions(client *godo.Client) ([]string, error) {
 func newDropLetMultiCreateRequest(prefix, region, keyID string, count int) *godo.DropletMultiCreateRequest {
 
 	names := []string{}
-	// Start index at 1 so we can use it in the hostname.
-	for i := 1; i <= count; i++ {
-		names = append(names, fmt.Sprintf("%s-%s", prefix, strconv.Itoa(i)))
+	for i := 0; i < count; i++ {
+		b := make([]byte, 6)
+		rand.Read(b)
+		names = append(names, fmt.Sprintf("%s-%s", prefix, base64.StdEncoding.EncodeToString(b)))
 	}
 
 	return &godo.DropletMultiCreateRequest{
