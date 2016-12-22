@@ -31,10 +31,7 @@ func (m *Machine) GetIPs(client *godo.Client) error {
 		return err
 	}
 	m.IPv4, err = droplet.PublicIPv4()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // StartSSHProxy starts a socks proxy on 127.0.0.1 or the desired port.
@@ -65,7 +62,7 @@ func (m *Machine) GetIP() string {
 }
 
 func dropletsToMachines(droplets []godo.Droplet) []Machine {
-	m := []Machine{}
+	var m []Machine
 	for _, d := range droplets {
 		m = append(m, Machine{
 			ID:   d.ID,

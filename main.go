@@ -26,7 +26,7 @@ var (
 	force       = flag.Bool("force", false, "Bypass built-in protections that prevent you from deploying more than 50 droplets")
 	startPort   = flag.Int("start-tcp", 55555, "TCP port to start first proxy on and increment from")
 	showversion = flag.Bool("v", false, "Print version and exit")
-	version     = "1.1.0"
+	version     = "1.1.1"
 )
 
 func main() {
@@ -57,7 +57,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("%s\n", err.Error())
 	}
-	droplets := []godo.Droplet{}
+
+	var droplets []godo.Droplet
 
 	for region, c := range regionCountMap {
 		log.Printf("Creating %d droplets to region %s", c, region)
@@ -77,18 +78,18 @@ func main() {
 	for i := range machines {
 		m := &machines[i]
 		if err := m.GetIPs(client); err != nil {
-			log.Println("There was an error getting the IPv4 address of droplet name: %s\nError: %s\n", m.Name, err.Error())
+			log.Printf("There was an error getting the IPv4 address of droplet name: %s\nError: %s\n", m.Name, err.Error())
 		}
 		if m.IsReady() {
 			if err := m.StartSSHProxy(strconv.Itoa(*startPort), *sshLocation); err != nil {
-				log.Println("Could not start SSH proxy on droplet name: %s\nError: %s\n", m.Name, err.Error())
+				log.Printf("Could not start SSH proxy on droplet name: %s\nError: %s\n", m.Name, err.Error())
 			} else {
-				log.Println("SSH proxy started on port %d on droplet name: %s IP: %s\n", *startPort, m.Name, m.IPv4)
+				log.Printf("SSH proxy started on port %d on droplet name: %s IP: %s\n", *startPort, m.Name, m.IPv4)
 				go m.PrintStdError()
 			}
 			*startPort++
 		} else {
-			log.Println("Droplet name: %s is not ready yet. Skipping...\n", m.Name)
+			log.Printf("Droplet name: %s is not ready yet. Skipping...\n", m.Name)
 		}
 	}
 
@@ -105,9 +106,9 @@ func main() {
 	<-c
 	for _, m := range machines {
 		if err := m.Destroy(client); err != nil {
-			log.Println("Could not delete droplet name: %s\n", m.Name)
+			log.Printf("Could not delete droplet name: %s\n", m.Name)
 		} else {
-			log.Println("Deleted droplet name: %s", m.Name)
+			log.Printf("Deleted droplet name: %s\n", m.Name)
 		}
 	}
 }
