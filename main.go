@@ -3,6 +3,7 @@ and starting socks proxies via SSH after creation.*/
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -26,7 +27,7 @@ var (
 	force       = flag.Bool("force", false, "Bypass built-in protections that prevent you from deploying more than 50 droplets")
 	startPort   = flag.Int("start-tcp", 55555, "TCP port to start first proxy on and increment from")
 	showversion = flag.Bool("v", false, "Print version and exit")
-	version     = "1.1.1"
+	version     = "1.2.0"
 )
 
 func main() {
@@ -62,7 +63,9 @@ func main() {
 
 	for region, c := range regionCountMap {
 		log.Printf("Creating %d droplets to region %s", c, region)
-		drops, _, err := client.Droplets.CreateMultiple(newDropLetMultiCreateRequest(*name, region, *keyID, c))
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		drops, _, err := client.Droplets.CreateMultiple(ctx, newDropLetMultiCreateRequest(*name, region, *keyID, c))
 		if err != nil {
 			log.Printf("There was an error creating the droplets:\nError: %s\n", err.Error())
 			log.Fatalln("You may need to do some manual clean up!")

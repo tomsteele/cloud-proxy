@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os/exec"
+	"time"
 
 	"github.com/digitalocean/godo"
 )
@@ -26,7 +28,9 @@ func (m *Machine) IsReady() bool {
 
 // GetIPs populates the IPv4 address of the machine.
 func (m *Machine) GetIPs(client *godo.Client) error {
-	droplet, _, err := client.Droplets.Get(m.ID)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	droplet, _, err := client.Droplets.Get(ctx, m.ID)
 	if err != nil {
 		return err
 	}
@@ -52,7 +56,9 @@ func (m *Machine) StartSSHProxy(port, sshKeyLocation string) error {
 
 // Destroy deletes the droplet.
 func (m *Machine) Destroy(client *godo.Client) error {
-	_, err := client.Droplets.Delete(m.ID)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := client.Droplets.Delete(ctx, m.ID)
 	return err
 }
 
