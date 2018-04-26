@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/digitalocean/godo"
 	"github.com/jmcvetta/randutil"
@@ -9,7 +11,9 @@ import (
 
 func doRegions(client *godo.Client) ([]string, error) {
 	var slugs []string
-	regions, _, err := client.Regions.List(&godo.ListOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	regions, _, err := client.Regions.List(ctx, &godo.ListOptions{})
 	if err != nil {
 		return slugs, err
 	}
