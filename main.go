@@ -3,6 +3,7 @@ and starting socks proxies via SSH after creation.*/
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -27,7 +29,7 @@ var (
 	force       = flag.Bool("force", false, "Bypass built-in protections that prevent you from deploying more than 50 droplets")
 	startPort   = flag.Int("start-tcp", 55555, "TCP port to start first proxy on and increment from")
 	showversion = flag.Bool("v", false, "Print version and exit")
-	version     = "1.2.0"
+	version     = "1.3.0"
 )
 
 func main() {
@@ -79,7 +81,7 @@ func main() {
 	// For each droplet, poll it once, start SSH proxy, and then track it.
 	machines := dropletsToMachines(droplets)
 	for i := range machines {
-		m := &machines[i]
+		m := machines[i]
 		if err := m.GetIPs(client); err != nil {
 			log.Printf("There was an error getting the IPv4 address of droplet name: %s\nError: %s\n", m.Name, err.Error())
 		}
@@ -88,7 +90,6 @@ func main() {
 				log.Printf("Could not start SSH proxy on droplet name: %s\nError: %s\n", m.Name, err.Error())
 			} else {
 				log.Printf("SSH proxy started on port %d on droplet name: %s IP: %s\n", *startPort, m.Name, m.IPv4)
-				go m.PrintStdError()
 			}
 			*startPort++
 		} else {
@@ -106,8 +107,104 @@ func main() {
 	// Catch CTRL-C and delete droplets.
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	<-c
+	go func() {
+		<-c
+		cleanUp(machines, client)
+		os.Exit(1)
+	}()
+	var newLine string
+	header := strings.Repeat("-", 60)
+	if runtime.GOOS == "windows" {
+		newLine = "\r\n"
+	} else {
+		newLine = "\n"
+	}
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Println(header)
+		fmt.Printf("[L]ist [C]onnect [D]isconnect [Q]uit [H]elp: ")
+		text, _ := reader.ReadString('\n')
+		text = strings.Replace(text, newLine, "", -1)
+		lowerText := strings.ToLower(text)
+		splitText := strings.Fields(lowerText)
+		var id int
+		var err error
+		switch len(splitText) {
+		case 0:
+			continue
+		case 2, 3:
+			id, err = strconv.Atoi(splitText[1])
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+		}
+		switch splitText[0] {
+		case "l":
+			for _, machine := range machines {
+				fmt.Printf("ID: %d\tName: %s\tIP: %s:%s\tConnected: %v\n",
+					machine.ID, machine.Name, machine.IPv4, machine.Listener, machine.SSHActive)
+			}
+		case "c":
+			modifyTunnel(machines, id, connect(splitText[2], *sshLocation))
+		case "d":
+			modifyTunnel(machines, id, disconnect)
+		case "h":
+			fmt.Println(`
+l              List current machines and connections
+c [id] [port]  Create a socks proxy using the ID and then port
+d [id]         Disconnect socks proxy via the host ID
+q              Quit program
+h              This message`)
+		case "q":
+			cleanUp(machines, client)
+			os.Exit(0)
+		default:
+		}
+	}
+}
+
+func modifyTunnel(machines []*Machine, id int, f func(*Machine)) {
+	for _, machine := range machines {
+		if machine.ID == id {
+			f(machine)
+		}
+	}
+}
+
+func connect(port, sshLocation string) func(*Machine) {
+	return func(machine *Machine) {
+		if machine.SSHActive {
+			fmt.Println("[WARNING] Machine already has an active socks proxy. Please disconnect the tunnel before creating a new one.")
+			return
+		}
+		if err := machine.StartSSHProxy(port, sshLocation); err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+func disconnect(machine *Machine) {
+	if !machine.SSHActive {
+		fmt.Println("[WARNING] Machine does not have an active tunnel")
+		return
+	}
+	deleteTunnel(machine)
+}
+
+func deleteTunnel(machine *Machine) {
+	if err := machine.CMD.Process.Kill(); err != nil {
+		log.Println(err)
+	}
+	machine.done <- true
+	machine.Listener = ""
+	machine.SSHActive = false
+}
+
+func cleanUp(machines []*Machine, client *godo.Client) {
+	fmt.Println("Cleaning up, and exiting")
 	for _, m := range machines {
+		deleteTunnel(m)
 		if err := m.Destroy(client); err != nil {
 			log.Printf("Could not delete droplet name: %s\n", m.Name)
 		} else {
