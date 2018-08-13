@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"log"
 	"os/exec"
 	"time"
 
@@ -19,6 +21,7 @@ type Machine struct {
 	Stderr    *bufio.Reader
 	Listener  string
 	CMD       *exec.Cmd
+	done      chan bool
 }
 
 // IsReady ensures that the machine has an IP address.
@@ -50,7 +53,15 @@ func (m *Machine) StartSSHProxy(port, sshKeyLocation string) error {
 	if err := m.CMD.Start(); err != nil {
 		return err
 	}
+	m.done = make(chan bool, 1)
+	m.done <- false
 	m.SSHActive = true
+	go func() {
+		if _, err := m.CMD.Process.Wait(); err != nil {
+			log.Println(err)
+		}
+	}()
+	go m.PrintStdError()
 	return nil
 }
 
@@ -67,10 +78,10 @@ func (m *Machine) GetIP() string {
 	return m.IPv4
 }
 
-func dropletsToMachines(droplets []godo.Droplet) []Machine {
-	var m []Machine
+func dropletsToMachines(droplets []godo.Droplet) []*Machine {
+	var m []*Machine
 	for _, d := range droplets {
-		m = append(m, Machine{
+		m = append(m, &Machine{
 			ID:   d.ID,
 			Name: d.Name,
 		})
@@ -81,22 +92,34 @@ func dropletsToMachines(droplets []godo.Droplet) []Machine {
 // PrintStdError reads from stderr from ssh and prints it to stdout.
 func (m *Machine) PrintStdError() {
 	for {
-		str, err := m.Stderr.ReadString('\n')
-		if err != nil && str != "" {
-			fmt.Printf("From %s SSH stderr\n", m.Name)
-			fmt.Println(str)
+		switch {
+		case <-m.done:
+			return
+		default:
+			str, err := m.Stderr.ReadString('\n')
+			if err != nil && err != io.EOF {
+				log.Println(err)
+				break
+			}
+			if err == io.EOF {
+				break
+			}
+			if str != "" {
+				fmt.Printf("From %s SSH stderr\n", m.Name)
+				fmt.Println(str)
+			}
 		}
 	}
 
 }
 
-func printProxyChains(machines []Machine) {
+func printProxyChains(machines []*Machine) {
 	for _, m := range machines {
 		fmt.Printf("socks5 127.0.0.1 %s\n", m.Listener)
 	}
 }
 
-func printSocksd(machines []Machine) {
+func printSocksd(machines []*Machine) {
 	fmt.Printf("\"upstreams\": [\n")
 	for i, m := range machines {
 		fmt.Printf("{\"type\": \"socks5\", \"address\": \"127.0.0.1:%s\"}", m.Listener)
