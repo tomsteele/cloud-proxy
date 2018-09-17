@@ -1,36 +1,55 @@
-/*cloud-proxy is a utility for creating multiple DO droplets
+/*cloud-proxy is a utility for creating multiple instances
 and starting socks proxies via SSH after creation.*/
 package main
 
 import (
-	"bufio"
-	"context"
-	"errors"
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
+	"os/exec"
 	"os/signal"
-	"runtime"
-	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
-	"github.com/digitalocean/godo"
+	"golang.org/x/crypto/sha3"
 )
 
 var (
-	token       = flag.String("token", "", "DO API key")
-	sshLocation = flag.String("key-location", "~/.ssh/id_rsa", "SSH key location")
-	keyID       = flag.String("key", "", "SSH key fingerprint")
-	count       = flag.Int("count", 5, "Amount of droplets to deploy")
-	name        = flag.String("name", "cloud-proxy", "Droplet name prefix")
-	regions     = flag.String("regions", "*", "Comma separated list of regions to deploy droplets to, defaults to all.")
-	force       = flag.Bool("force", false, "Bypass built-in protections that prevent you from deploying more than 50 droplets")
-	startPort   = flag.Int("start-tcp", 55555, "TCP port to start first proxy on and increment from")
-	showversion = flag.Bool("v", false, "Print version and exit")
-	version     = "1.3.0"
+	sshLocation   = flag.String("key-location", "~/.ssh/id_rsa", "SSH key location")
+	count         = flag.Int("count", 5, "Amount of droplets to deploy")
+	name          = flag.String("name", "cloud-proxy", "Droplet name prefix")
+	doRegionFlag  = flag.String("doRegions", "*", "Comma separated list of regions to deploy droplets to, defaults to all.")
+	awsRegionFlag = flag.String("awsRegions", "*", "Comma separated list of regions to deploy droplets to, defaults to all.")
+	force         = flag.Bool("force", false, "Bypass built-in protections that prevent you from deploying more than 50 droplets")
+	startPort     = flag.Int("start-tcp", 55555, "TCP port to start first proxy on and increment from")
+	awsProvider   = flag.Bool("aws", false, "Use AWS as provider")
+	doProvider    = flag.Bool("do", false, "Use DigitalOcean as provider")
+	showversion   = flag.Bool("v", false, "Print version and exit")
+	version       = "2.0.0"
 )
+
+type digitaloceanInfo struct {
+	Name   string
+	Region string
+}
+
+type AwsInfo struct {
+	AMI           map[string]string // AMI["sa-east-1"] = "cloud-proxy-ami-sa-east-1"
+	SecurityGroup map[string]string // SecurityGroup["sa-east-1"] = "cloud-proxy-securitygroup-sa-east-1"
+	Instances     []Instance
+}
+
+type Instance struct {
+	Name          string
+	Region        string
+	AMI           string
+	SecurityGroup string
+}
 
 func main() {
 	flag.Parse()
@@ -38,225 +57,202 @@ func main() {
 		fmt.Println(version)
 		os.Exit(0)
 	}
-	if *token == "" {
-		log.Fatalln("-token required")
+
+	if !*doProvider && !*awsProvider {
+		log.Fatal("Need at least one provider")
 	}
 
-	if *keyID == "" {
-		log.Fatalln("-key required")
+	providers := []string{}
+	doInfos := []digitaloceanInfo{}
+	awsInfo := AwsInfo{}
+
+	if *doProvider {
+		providers = append(providers, "digitalocean")
 	}
+	if *awsProvider {
+		providers = append(providers, "aws")
+		awsInfo.AMI = make(map[string]string)
+		awsInfo.SecurityGroup = make(map[string]string)
+	}
+
 	if *count > 50 && !*force {
 		log.Fatalln("-count greater than 50")
 	}
 
-	client := newDOClient(*token)
+	for x := 0; x < *count; x++ {
+		var region string
 
-	availableRegions, err := doRegions(client)
-	if err != nil {
-		log.Fatalf("There was an error getting a list of regions:\nError: %s\n", err.Error())
-	}
-
-	regionCountMap, err := regionMap(availableRegions, *regions, *count)
-	if err != nil {
-		log.Fatalf("%s\n", err.Error())
-	}
-
-	var droplets []godo.Droplet
-
-	for region, c := range regionCountMap {
-		log.Printf("Creating %d droplets to region %s", c, region)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		drops, _, err := client.Droplets.CreateMultiple(ctx, newDropLetMultiCreateRequest(*name, region, *keyID, c))
+		providerIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(providers))))
 		if err != nil {
-			log.Printf("There was an error creating the droplets:\nError: %s\n", err.Error())
-			log.Fatalln("You may need to do some manual clean up!")
+			log.Fatal(err)
 		}
-		droplets = append(droplets, drops...)
-	}
 
-	log.Println("Droplets deployed. Waiting 100 seconds...")
-	time.Sleep(100 * time.Second)
-
-	// For each droplet, poll it once, start SSH proxy, and then track it.
-	machines := dropletsToMachines(droplets)
-	for i := range machines {
-		m := machines[i]
-		if err := m.GetIPs(client); err != nil {
-			log.Printf("There was an error getting the IPv4 address of droplet name: %s\nError: %s\n", m.Name, err.Error())
-		}
-		if m.IsReady() {
-			if err := m.StartSSHProxy(strconv.Itoa(*startPort), *sshLocation); err != nil {
-				log.Printf("Could not start SSH proxy on droplet name: %s\nError: %s\n", m.Name, err.Error())
+		switch providers[providerIndex.Int64()] {
+		case "digitalocean":
+			if *doRegionFlag == "*" {
+				region = randomRegion(doRegions)
 			} else {
-				log.Printf("SSH proxy started on port %d on droplet name: %s IP: %s\n", *startPort, m.Name, m.IPv4)
+				numRegions := strings.Split(*doRegionFlag, ",")
+				if len(numRegions) > 1 {
+					region = randomRegion(numRegions)
+				} else {
+					region = numRegions[0]
+				}
 			}
-			*startPort++
-		} else {
-			log.Printf("Droplet name: %s is not ready yet. Skipping...\n", m.Name)
+			computerName := fmt.Sprintf("%s-%s", *name, namePostfix())
+			cs := digitaloceanInfo{}
+			cs.Name = computerName
+			cs.Region = region
+			doInfos = append(doInfos, cs)
+		case "aws":
+			if *awsRegionFlag == "*" {
+				region = randomRegion(awsRegions)
+			} else {
+				numRegions := strings.Split(*awsRegionFlag, ",")
+				if len(numRegions) > 1 {
+					region = randomRegion(numRegions)
+				} else {
+					region = numRegions[0]
+				}
+			}
+			computerName := fmt.Sprintf("%s-%s-%s", *name, namePostfix(), region)
+			amiName := fmt.Sprintf("%s-ami-%s", *name, region)
+			securityGroupName := fmt.Sprintf("%s-securitygroup-%s", *name, region)
+			awsInfo.AMI[region] = amiName
+			awsInfo.SecurityGroup[region] = securityGroupName
+			awsInfo.Instances = append(awsInfo.Instances, Instance{Name: computerName, Region: region, AMI: amiName, SecurityGroup: securityGroupName})
 		}
+
 	}
 
-	log.Println("proxychains config")
-	printProxyChains(machines)
-	log.Println("socksd config")
-	printSocksd(machines)
+	createTerraformFile("do-infrastructure.tf", doTemplate, doInfos)
+	createTerraformFile("aws-infrastructure.tf", awsTemplate, awsInfo)
 
-	log.Println("Please CTRL-C to destroy droplets")
+	executeTerraform([]string{"apply", "-var-file=secrets.tfvars", "-auto-approve"})
+
+	computerUsers := make(map[string]string)
+	for _, instance := range awsInfo.Instances {
+		name := fmt.Sprintf("%s-IP", instance.Name)
+		computerUsers[name] = "ec2-user"
+	}
+	for _, computer := range doInfos {
+		name := fmt.Sprintf("%s-IP", computer.Name)
+		computerUsers[name] = "root"
+	}
+
+	printConfigs(*startPort, printProxyChains, printSocksd)
+
+	tunnelProcesses := createTunnels(computerUsers)
+
+	log.Println("Please CTRL-C to destroy infrastructure")
 
 	// Catch CTRL-C and delete droplets.
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	go func() {
-		<-c
-		cleanUp(machines, client)
-		os.Exit(1)
-	}()
-	var newLine string
-	header := strings.Repeat("-", 60)
-	if runtime.GOOS == "windows" {
-		newLine = "\r\n"
-	} else {
-		newLine = "\n"
+	<-c
+	executeTerraform([]string{"destroy", "-var-file=secrets.tfvars", "-auto-approve"})
+	for _, process := range tunnelProcesses {
+		if err := process.Kill(); err != nil {
+			log.Fatal(err)
+		}
 	}
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Println(header)
-		fmt.Printf("[L]ist [C]onnect [D]isconnect [Q]uit [H]elp: ")
-		text, _ := reader.ReadString('\n')
-		text = strings.Replace(text, newLine, "", -1)
-		lowerText := strings.ToLower(text)
-		splitText := strings.Fields(lowerText)
-		var id int
-		var err error
-		switch len(splitText) {
-		case 0:
+
+}
+
+func printConfigs(port int, configs ...func(int)) {
+	for _, config := range configs {
+		config(port)
+	}
+}
+
+func printProxyChains(port int) {
+	log.Println("proxychains config")
+	for x := 0; x < *count; x++ {
+		fmt.Printf("socks5 127.0.0.1 %d\n", port)
+		port++
+	}
+}
+
+func printSocksd(port int) {
+	log.Println("socksd config")
+	fmt.Printf("\"upstreams\": [\n")
+	for x := 0; x < *count; x++ {
+		fmt.Printf("{\"type\": \"socks5\", \"address\": \"127.0.0.1:%d\"}", port)
+		port++
+		if x < (*count - 1) {
+			fmt.Printf(",\n")
+		}
+	}
+	fmt.Printf("\n]\n")
+}
+
+func randomRegion(regions []string) string {
+	regionIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(regions))))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return regions[regionIndex.Int64()]
+}
+
+func createTerraformFile(fileName, templateData string, data interface{}) {
+	fh, err := os.Create(fileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	t := template.Must(template.New("tmpl").Parse(templateData))
+	if err := t.Execute(fh, data); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func createTunnels(computerUsers map[string]string) []*os.Process {
+	time.Sleep(10 * time.Second)
+	output, err := exec.Command("terraform", "output").Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tunnelProcesses := []*os.Process{}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		splitOutput := strings.Split(line, "=")
+		if len(splitOutput) != 2 {
 			continue
-		case 2, 3:
-			id, err = strconv.Atoi(splitText[1])
-			if err != nil {
-				log.Println(err)
-				continue
-			}
 		}
-		switch splitText[0] {
-		case "l":
-			for _, machine := range machines {
-				fmt.Printf("ID: %d\tName: %s\tIP: %s:%s\tConnected: %v\n",
-					machine.ID, machine.Name, machine.IPv4, machine.Listener, machine.SSHActive)
-			}
-		case "c":
-			modifyTunnel(machines, id, connect(splitText[2], *sshLocation))
-		case "d":
-			modifyTunnel(machines, id, disconnect)
-		case "h":
-			fmt.Println(`
-l              List current machines and connections
-c [id] [port]  Create a socks proxy using the ID and then port
-d [id]         Disconnect socks proxy via the host ID
-q              Quit program
-h              This message`)
-		case "q":
-			cleanUp(machines, client)
-			os.Exit(0)
-		default:
+		ip := strings.TrimSpace(splitOutput[1])
+		computerName := strings.TrimSpace(splitOutput[0])
+		port := fmt.Sprintf("%d", *startPort)
+		var host string
+		if user, ok := computerUsers[computerName]; ok {
+			host = fmt.Sprintf("%s@%s", user, ip)
 		}
+		fmt.Printf("creating tunnel to %s on %s\n", host, port)
+		cmd := exec.Command("ssh", "-D", port, "-N", "-o", "StrictHostKeyChecking=no", "-i", *sshLocation, host)
+		cmd.Stderr = os.Stderr
+		cmd.Start()
+		tunnelProcesses = append(tunnelProcesses, cmd.Process)
+		*startPort++
 	}
+	return tunnelProcesses
 }
 
-func modifyTunnel(machines []*Machine, id int, f func(*Machine)) {
-	for _, machine := range machines {
-		if machine.ID == id {
-			f(machine)
-		}
-	}
+func executeTerraform(args []string) {
+	cmd := exec.Command("terraform", args...)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	cmd.Start()
+	cmd.Wait()
 }
 
-func connect(port, sshLocation string) func(*Machine) {
-	return func(machine *Machine) {
-		if machine.SSHActive {
-			fmt.Println("[WARNING] Machine already has an active socks proxy. Please disconnect the tunnel before creating a new one.")
-			return
-		}
-		if err := machine.StartSSHProxy(port, sshLocation); err != nil {
-			log.Println(err)
-		}
+func namePostfix() string {
+	var buffer [32]byte
+	if _, err := rand.Read(buffer[:]); err != nil {
+		log.Fatal(err)
 	}
-}
-
-func disconnect(machine *Machine) {
-	if !machine.SSHActive {
-		fmt.Println("[WARNING] Machine does not have an active tunnel")
-		return
+	hash := sha3.New256()
+	if _, err := hash.Write(buffer[:]); err != nil {
+		log.Fatal(err)
 	}
-	deleteTunnel(machine)
-}
-
-func deleteTunnel(machine *Machine) {
-	if err := machine.CMD.Process.Kill(); err != nil {
-		log.Println(err)
-	}
-	machine.done <- true
-	machine.Listener = ""
-	machine.SSHActive = false
-}
-
-func cleanUp(machines []*Machine, client *godo.Client) {
-	fmt.Println("Cleaning up, and exiting")
-	for _, m := range machines {
-		deleteTunnel(m)
-		if err := m.Destroy(client); err != nil {
-			log.Printf("Could not delete droplet name: %s\n", m.Name)
-		} else {
-			log.Printf("Deleted droplet name: %s\n", m.Name)
-		}
-	}
-}
-
-func regionMap(slugs []string, regions string, count int) (map[string]int, error) {
-	allowedSlugs := strings.Split(regions, ",")
-	regionCountMap := make(map[string]int)
-
-	if regions != "*" {
-		for _, s := range slugs {
-			for _, a := range allowedSlugs {
-				if s == a {
-					if len(regionCountMap) == count {
-						break
-					}
-					regionCountMap[s] = 0
-				}
-			}
-		}
-	} else {
-		for _, s := range slugs {
-			if len(regionCountMap) == count {
-				break
-			}
-			regionCountMap[s] = 0
-		}
-	}
-
-	if len(regionCountMap) == 0 {
-		return regionCountMap, errors.New("There are no regions to use")
-	}
-
-	perRegionCount := count / len(regionCountMap)
-	perRegionCountRemainder := count % len(regionCountMap)
-
-	for k := range regionCountMap {
-		regionCountMap[k] = perRegionCount
-	}
-
-	if perRegionCountRemainder != 0 {
-		c := 0
-		for k, v := range regionCountMap {
-			if c >= perRegionCountRemainder {
-				break
-			}
-			regionCountMap[k] = v + 1
-			c++
-		}
-	}
-	return regionCountMap, nil
+	output := hash.Sum(nil)
+	return hex.EncodeToString(output[0:8])
 }
