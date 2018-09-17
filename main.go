@@ -1,4 +1,4 @@
-/*cloud-proxy is a utility for creating multiple DO droplets
+/*cloud-proxy is a utility for creating multiple instances
 and starting socks proxies via SSH after creation.*/
 package main
 
@@ -20,16 +20,17 @@ import (
 )
 
 var (
-	sshLocation = flag.String("key-location", "~/.ssh/id_rsa", "SSH key location")
-	count       = flag.Int("count", 5, "Amount of droplets to deploy")
-	name        = flag.String("name", "cloud-proxy", "Droplet name prefix")
-	regions     = flag.String("regions", "*", "Comma separated list of regions to deploy droplets to, defaults to all.")
-	force       = flag.Bool("force", false, "Bypass built-in protections that prevent you from deploying more than 50 droplets")
-	startPort   = flag.Int("start-tcp", 55555, "TCP port to start first proxy on and increment from")
-	awsProvider = flag.Bool("aws", false, "Use AWS as provider")
-	doProvider  = flag.Bool("do", false, "Use DigitalOcean as provider")
-	showversion = flag.Bool("v", false, "Print version and exit")
-	version     = "2.0.0"
+	sshLocation   = flag.String("key-location", "~/.ssh/id_rsa", "SSH key location")
+	count         = flag.Int("count", 5, "Amount of droplets to deploy")
+	name          = flag.String("name", "cloud-proxy", "Droplet name prefix")
+	doRegionFlag  = flag.String("doRegions", "*", "Comma separated list of regions to deploy droplets to, defaults to all.")
+	awsRegionFlag = flag.String("awsRegions", "*", "Comma separated list of regions to deploy droplets to, defaults to all.")
+	force         = flag.Bool("force", false, "Bypass built-in protections that prevent you from deploying more than 50 droplets")
+	startPort     = flag.Int("start-tcp", 55555, "TCP port to start first proxy on and increment from")
+	awsProvider   = flag.Bool("aws", false, "Use AWS as provider")
+	doProvider    = flag.Bool("do", false, "Use DigitalOcean as provider")
+	showversion   = flag.Bool("v", false, "Print version and exit")
+	version       = "2.0.0"
 )
 
 type digitaloceanInfo struct {
@@ -88,14 +89,12 @@ func main() {
 
 		switch providers[providerIndex.Int64()] {
 		case "digitalocean":
-			if *regions == "*" {
-				index := randomRegion(doRegions)
-				region = doRegions[index]
+			if *doRegionFlag == "*" {
+				region = randomRegion(doRegions)
 			} else {
-				numRegions := strings.Split(*regions, ",")
+				numRegions := strings.Split(*doRegionFlag, ",")
 				if len(numRegions) > 1 {
-					index := randomRegion(numRegions)
-					region = doRegions[index]
+					region = randomRegion(numRegions)
 				} else {
 					region = numRegions[0]
 				}
@@ -106,14 +105,12 @@ func main() {
 			cs.Region = region
 			doInfos = append(doInfos, cs)
 		case "aws":
-			if *regions == "*" {
-				index := randomRegion(awsRegions)
-				region = awsRegions[index]
+			if *awsRegionFlag == "*" {
+				region = randomRegion(awsRegions)
 			} else {
-				numRegions := strings.Split(*regions, ",")
+				numRegions := strings.Split(*awsRegionFlag, ",")
 				if len(numRegions) > 1 {
-					index := randomRegion(numRegions)
-					region = awsRegions[index]
+					region = randomRegion(numRegions)
 				} else {
 					region = numRegions[0]
 				}
@@ -143,7 +140,7 @@ func main() {
 		computerUsers[name] = "root"
 	}
 
-	printConfigs(*startPort)
+	printConfigs(*startPort, printProxyChains, printSocksd)
 
 	tunnelProcesses := createTunnels(computerUsers)
 
@@ -162,14 +159,14 @@ func main() {
 
 }
 
-func printConfigs(port int) {
-	log.Println("proxychains config")
-	printProxyChains(port)
-	log.Println("socksd config")
-	printSocksd(port)
+func printConfigs(port int, configs ...func(int)) {
+	for _, config := range configs {
+		config(port)
+	}
 }
 
 func printProxyChains(port int) {
+	log.Println("proxychains config")
 	for x := 0; x < *count; x++ {
 		fmt.Printf("socks5 127.0.0.1 %d\n", port)
 		port++
@@ -177,6 +174,7 @@ func printProxyChains(port int) {
 }
 
 func printSocksd(port int) {
+	log.Println("socksd config")
 	fmt.Printf("\"upstreams\": [\n")
 	for x := 0; x < *count; x++ {
 		fmt.Printf("{\"type\": \"socks5\", \"address\": \"127.0.0.1:%d\"}", port)
@@ -188,12 +186,12 @@ func printSocksd(port int) {
 	fmt.Printf("\n]\n")
 }
 
-func randomRegion(regions []string) int64 {
+func randomRegion(regions []string) string {
 	regionIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(regions))))
 	if err != nil {
 		log.Fatal(err)
 	}
-	return regionIndex.Int64()
+	return regions[regionIndex.Int64()]
 }
 
 func createTerraformFile(fileName, templateData string, data interface{}) {
@@ -229,7 +227,7 @@ func createTunnels(computerUsers map[string]string) []*os.Process {
 			host = fmt.Sprintf("%s@%s", user, ip)
 		}
 		fmt.Printf("creating tunnel to %s on %s\n", host, port)
-		cmd := exec.Command("ssh", "-D", port, "-N", "-o", "StrictHostKeyChecking=no", host)
+		cmd := exec.Command("ssh", "-D", port, "-N", "-o", "StrictHostKeyChecking=no", "-i", *sshLocation, host)
 		cmd.Stderr = os.Stderr
 		cmd.Start()
 		tunnelProcesses = append(tunnelProcesses, cmd.Process)

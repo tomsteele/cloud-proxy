@@ -1,38 +1,45 @@
 # cloud-proxy
-cloud-proxy creates multiple DO droplets and then starts local socks proxies using SSH. After exiting, the droplets are deleted.
+cloud-proxy creates multiple cloud instances and then starts local socks proxies using SSH. After exiting, the droplets are deleted.
 
 ### Warning
 This tool will deploy as many droplets as you desire, and will make a best effort to delete them after use. However, you are ultimately going to pay the bill for these droplets, and it is up to you, and you alone to ensure they actually get deleted.
 
 ### Install
-Download a compiled release [here](https://github.com/tomsteele/cloud-proxy/releases/latest). You can now execute without any dependencies. Currently the only supported and tested OS is Linux:
+Download a compiled release [here](https://github.com/tomsteele/cloud-proxy/releases/latest).  
+Download terraform [here](https://www.terraform.io/downloads.html).  
+Currently the only supported and tested OS is Linux:
 ```
 $ ./cloud-proxy
 ```
 ### Usage
 ```
 Usage of ./cloud-proxy:
+  -aws
+    	Use AWS as provider
+  -awsRegions string
+    	Comma separated list of regions to deploy droplets to, defaults to all. (default "*")
   -count int
-        Amount of droplets to deploy (default 5)
+    	Amount of droplets to deploy (default 5)
+  -do
+    	Use DigitalOcean as provider
+  -doRegions string
+    	Comma separated list of regions to deploy droplets to, defaults to all. (default "*")
   -force
-        Bypass built-in protections that prevent you from deploying more than 50 droplets
-  -key string
-        SSH key fingerprint
+    	Bypass built-in protections that prevent you from deploying more than 50 droplets
   -key-location string
-        SSH key location (default "~/.ssh/id_rsa")
+    	SSH key location (default "~/.ssh/id_rsa")
   -name string
-        Droplet name prefix (default "cloud-proxy")
-  -regions string
-        Comma separated list of regions to deploy droplets to, defaults to all. (default "*")
+    	Droplet name prefix (default "cloud-proxy")
   -start-tcp int
-        TCP port to start first proxy on and increment from (default 55555)
-  -token string
-        DO API key
-  -v    Print version and exit
+    	TCP port to start first proxy on and increment from (default 55555)
+  -v	Print version and exit
 ```
 
 ### Getting Started
-To use cloud-proxy you will need to have a DO API token, you can get one [here](https://cloud.digitalocean.com/settings/api/tokens). Next, ensure you have an SSH key saved on DO. This is the key that SSH will authentication with. The DO API and cloud-proxy require you to provide the fingerprint of the key you would like to use. You can obtain the fingerprint using `ssh-keygen`:
+To use cloud-proxy with DO you will need to have a DO API token, you can get one [here](https://cloud.digitalocean.com/settings/api/tokens).
+To use cloud-proxy with AWS you will need to have an Access and Secret key.
+
+Next, ensure you have an SSH key saved on DO. On AWS your SSH key will need to be setup on each region you'd like to use. This is the key that SSH will authentication with. The DO API and cloud-proxy require you to provide the fingerprint of the key you would like to use. You can obtain the fingerprint using `ssh-keygen`:
 ```
 $ ssh-keygen -lf ~/.ssh/id_rsa.pub
 ```
@@ -43,12 +50,23 @@ $ eval `ssh-agent -s`
 $ ssh-add ~/.ssh/id_rsa
 ```
 
-Now you may create some proxies:
+The AWS API only requires the name of the SSH key you previously imported into each region.
+
+Finally, you'll need to create a `secrets.tfvars` file that will contain the API tokens and information for SSH. The file should look like the following:
 ```
-$ cloud-proxy -count 2 -token <api-token> -key <fingerprint>
+do_token = "YOUR_DO_TOKEN"
+do_ssh_fingerprint = "YOUR:SSH:FINGERPRINT"
+aws_access_key = "YOUR_ACCESS_KEY"
+aws_secret_key = "YOUR_SECRET_KEY"
+aws_key_name = "SSH_KEY_NAME"
 ```
 
-When you are finished using your proxies, use CTRL-C to interrupt the program, cloud-proxy will catch the interrupt and delete the droplets.
+Now you may create some proxies:
+```
+$ ./cloud-proxy -do -aws -count 15
+```
+
+When you are finished using your proxies, use CTRL-C to interrupt the program, cloud-proxy will catch the interrupt and delete the instances.
 
 cloud-proxy will output a proxy list for proxychains and [socksd](https://github.com/eahydra/socks/tree/master/cmd/socksd). proxychains can be configured to iterate over a random proxy for each connection by uncommenting `random_chain`, you should also comment out `string-chain`, which is the default. You will also need to uncomment `chain_len` and set it to `1`.
 
