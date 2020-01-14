@@ -39,9 +39,9 @@ Usage of ./cloud-proxy:
 To use cloud-proxy with DO you will need to have a DO API token, you can get one [here](https://cloud.digitalocean.com/settings/api/tokens).
 To use cloud-proxy with AWS you will need to have an Access and Secret key.
 
-Next, ensure you have an SSH key saved on DO. On AWS your SSH key will need to be setup on each region you'd like to use. This is the key that SSH will authentication with. The DO API and cloud-proxy require you to provide the fingerprint of the key you would like to use. You can obtain the fingerprint using `ssh-keygen`:
+Next, ensure you have an SSH key saved on DO. On AWS your SSH key will need to be setup on each region you'd like to use. This is the key that SSH will authentication with. The DO API and cloud-proxy require you to provide the fingerprint of the key you would like to use. You can obtain the fingerprint using `ssh-keygen`. Please note that DO requires fingerprint keys in the MD5 format:
 ```
-$ ssh-keygen -lf ~/.ssh/id_rsa.pub
+$ ssh-keygen -lf ~/.ssh/id_rsa.pub -E MD5
 ```
 
 If your key requires a passphrase, you will need to use ssh-agent:
