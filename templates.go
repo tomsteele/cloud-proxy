@@ -8,6 +8,14 @@ provider "digitalocean" {
   token = "${var.do_token}"
 }
 
+terraform {
+  required_providers {
+    digitalocean = {
+      source = "digitalocean/digitalocean"
+    }
+  }
+}
+
 {{range .}}
 resource "digitalocean_droplet" "{{.Name}}" {
   image  = "ubuntu-14-04-x64"
