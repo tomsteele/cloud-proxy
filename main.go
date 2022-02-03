@@ -220,11 +220,12 @@ func createTunnels(computerUsers map[string]string) []*os.Process {
 			continue
 		}
 		ip := strings.TrimSpace(splitOutput[1])
+		ip2 := strings.Trim(ip, "\"")
 		computerName := strings.TrimSpace(splitOutput[0])
 		port := fmt.Sprintf("%d", *startPort)
 		var host string
 		if user, ok := computerUsers[computerName]; ok {
-			host = fmt.Sprintf("%s@%s", user, ip)
+			host = fmt.Sprintf("%s@%s", user, ip2)
 		}
 		fmt.Printf("creating tunnel to %s on %s\n", host, port)
 		cmd := exec.Command("ssh", "-D", port, "-N", "-o", "StrictHostKeyChecking=no", "-i", *sshLocation, host)
