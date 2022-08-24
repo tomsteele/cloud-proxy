@@ -1,5 +1,7 @@
-/*cloud-proxy is a utility for creating multiple instances
-and starting socks proxies via SSH after creation.*/
+/*
+cloud-proxy is a utility for creating multiple instances
+and starting socks proxies via SSH after creation.
+*/
 package main
 
 import (
@@ -206,7 +208,7 @@ func createTerraformFile(fileName, templateData string, data interface{}) {
 }
 
 func createTunnels(computerUsers map[string]string) []*os.Process {
-	time.Sleep(10 * time.Second)
+	time.Sleep(30 * time.Second)
 	output, err := exec.Command("terraform", "output").Output()
 	if err != nil {
 		log.Fatal(err)
@@ -219,7 +221,7 @@ func createTunnels(computerUsers map[string]string) []*os.Process {
 		if len(splitOutput) != 2 {
 			continue
 		}
-		ip := strings.TrimSpace(splitOutput[1])
+		ip := strings.Trim(strings.TrimSpace(splitOutput[1]), "\"")
 		computerName := strings.TrimSpace(splitOutput[0])
 		port := fmt.Sprintf("%d", *startPort)
 		var host string
@@ -227,7 +229,7 @@ func createTunnels(computerUsers map[string]string) []*os.Process {
 			host = fmt.Sprintf("%s@%s", user, ip)
 		}
 		fmt.Printf("creating tunnel to %s on %s\n", host, port)
-		cmd := exec.Command("ssh", "-D", port, "-N", "-o", "StrictHostKeyChecking=no", "-i", *sshLocation, host)
+		cmd := exec.Command("ssh", "-D", port, "-N", "-o", "StrictHostKeyChecking=no", "-o", "ServerAliveInterval=30", "-i", *sshLocation, host)
 		cmd.Stderr = os.Stderr
 		cmd.Start()
 		tunnelProcesses = append(tunnelProcesses, cmd.Process)

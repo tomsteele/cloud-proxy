@@ -3,7 +3,7 @@ package main
 var doRegions = []string{
 	"nyc1",
 	"nyc3",
-	"sfo2",
+	"sfo3",
 	"ams3",
 	"sgp1",
 	"lon1",
