@@ -1,7 +1,17 @@
 package main
 
 var doTemplate = `
+terraform {
+  required_providers {
+    digitalocean = {
+      source = "digitalocean/digitalocean"
+      version = "1.22.2"
+    }
+  }
+}
+
 variable "do_token" {}
+variable "pvt_key" {}
 variable "do_ssh_fingerprint" {}
 
 provider "digitalocean" {
@@ -10,17 +20,25 @@ provider "digitalocean" {
 
 {{range .}}
 resource "digitalocean_droplet" "{{.Name}}" {
-  image  = "ubuntu-14-04-x64"
-  name   = "{{.Name}}"
+  image = "ubuntu-22-04-x64"
+  name = "{{.Name}}"
   region = "{{.Region}}"
-  size   = "512mb"
+  size = "s-1vcpu-1gb"
+  private_networking = true
   ssh_keys = [
     "${var.do_ssh_fingerprint}"
   ]
+  connection {
+    host = self.ipv4_address
+    user = "root"
+    type = "ssh"
+    private_key = file("${var.pvt_key}")
+    timeout = "2m"
+  }
 }
 
 output "{{.Name}}-IP" {
-	value = "${digitalocean_droplet.{{.Name}}.ipv4_address}"
+    value = "${digitalocean_droplet.{{.Name}}.ipv4_address}"
 }
 
 {{end}}

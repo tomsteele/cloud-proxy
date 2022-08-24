@@ -1,5 +1,7 @@
-/*cloud-proxy is a utility for creating multiple instances
-and starting socks proxies via SSH after creation.*/
+/*
+cloud-proxy is a utility for creating multiple instances
+and starting socks proxies via SSH after creation.
+*/
 package main
 
 import (
@@ -219,7 +221,7 @@ func createTunnels(computerUsers map[string]string) []*os.Process {
 		if len(splitOutput) != 2 {
 			continue
 		}
-		ip := strings.TrimSpace(splitOutput[1])
+		ip := strings.Trim(strings.TrimSpace(splitOutput[1]), "\"")
 		computerName := strings.TrimSpace(splitOutput[0])
 		port := fmt.Sprintf("%d", *startPort)
 		var host string
