@@ -154,7 +154,7 @@ data "aws_ami" "{{$name}}" {
 
   filter {
     name   = "name"
-    values = ["amzn2-ami-hvm-2.0.2018*"]
+    values = ["amzn2-ami-hvm-2.0.2022*"]
   }
 
   filter {
